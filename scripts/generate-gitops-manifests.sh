@@ -254,7 +254,60 @@ if [[ ! -f "${VALUES_YAML}" ]]; then
   echo "Error: ${VALUES_YAML} not found." >&2
   exit 1
 fi
-sed -i "s|image: [^ ]*/lightspeed-stack[^ ]*|image: ${LIGHTSPEED_CORE_IMAGE}|g" "${VALUES_YAML}"
+
+# Newer RHDH charts split the Lightspeed Core image into registry, repository,
+# and tag. Only update intelligentAssistant.core.image, not other chart images.
+LIGHTSPEED_CORE_IMAGE_REGISTRY="${LIGHTSPEED_CORE_IMAGE%%/*}"
+LIGHTSPEED_CORE_IMAGE_PATH="${LIGHTSPEED_CORE_IMAGE#*/}"
+LIGHTSPEED_CORE_IMAGE_REPOSITORY="${LIGHTSPEED_CORE_IMAGE_PATH%:*}"
+LIGHTSPEED_CORE_IMAGE_TAG="${LIGHTSPEED_CORE_IMAGE##*:}"
+VALUES_YAML_TMP="${VALUES_YAML}.tmp"
+
+if awk \
+  -v registry="${LIGHTSPEED_CORE_IMAGE_REGISTRY}" \
+  -v repository="${LIGHTSPEED_CORE_IMAGE_REPOSITORY}" \
+  -v tag="${LIGHTSPEED_CORE_IMAGE_TAG}" '
+    {
+      if (/^[^[:space:]#]/) section = ($0 == "redhat-developer-hub:") ? 1 : 0
+      if (/^  [^[:space:]#]/ && section >= 1) section = ($0 == "  intelligentAssistant:") ? 2 : 1
+      if (/^    [^[:space:]#]/ && section >= 2) section = ($0 == "    core:") ? 3 : 2
+      if (/^      [^[:space:]#]/ && section >= 3) section = ($0 == "      image:") ? 4 : 3
+
+      if (section == 4 && /^        registry:/) {
+        print "        registry: " registry
+        registry_found = 1
+        next
+      }
+      if (section == 4 && /^        repository:/) {
+        print "        repository: " repository
+        repository_found = 1
+        next
+      }
+      if (section == 4 && /^        tag:/) {
+        print "        tag: " tag
+        tag_found = 1
+        next
+      }
+      # A nonempty digest overrides the tag when the chart renders the image.
+      if (section == 4 && /^        digest:/) {
+        print "        digest: \"\""
+        next
+      }
+
+      print
+    }
+    END {
+      if (!(registry_found && repository_found && tag_found)) {
+        exit 1
+      }
+    }
+  ' "${VALUES_YAML}" > "${VALUES_YAML_TMP}"; then
+  mv "${VALUES_YAML_TMP}" "${VALUES_YAML}"
+else
+  rm -f "${VALUES_YAML_TMP}"
+  # Older chart values keep the sidecar image in one field.
+  sed -i "s|image: [^ ]*/lightspeed-stack[^ ]*|image: ${LIGHTSPEED_CORE_IMAGE}|g" "${VALUES_YAML}"
+fi
 
 echo "Generated manifests:"
 ls -1 "${OUTPUT_DIR}"
