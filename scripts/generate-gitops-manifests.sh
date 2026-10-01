@@ -272,6 +272,7 @@ if awk \
       if (/^  [^[:space:]#]/ && section >= 1) section = ($0 == "  intelligentAssistant:") ? 2 : 1
       if (/^    [^[:space:]#]/ && section >= 2) section = ($0 == "    core:") ? 3 : 2
       if (/^      [^[:space:]#]/ && section >= 3) section = ($0 == "      image:") ? 4 : 3
+      if (section == 4 && /^      image:$/) image_found = 1
 
       if (section == 4 && /^        registry:/) {
         print "        registry: " registry
@@ -298,13 +299,22 @@ if awk \
     }
     END {
       if (!(registry_found && repository_found && tag_found)) {
-        exit 1
+        exit image_found ? 2 : 1
       }
     }
   ' "${VALUES_YAML}" > "${VALUES_YAML_TMP}"; then
   mv "${VALUES_YAML_TMP}" "${VALUES_YAML}"
 else
+  awk_status=$?
   rm -f "${VALUES_YAML_TMP}"
+  if [[ "${awk_status}" -ne 1 ]]; then
+    echo "Error: incomplete Lightspeed Core image fields in ${VALUES_YAML}." >&2
+    exit 1
+  fi
+  if ! grep -q "image: [^ ]*/lightspeed-stack[^ ]*" "${VALUES_YAML}"; then
+    echo "Error: no Lightspeed Core image field found in ${VALUES_YAML}." >&2
+    exit 1
+  fi
   # Older chart values keep the sidecar image in one field.
   sed -i "s|image: [^ ]*/lightspeed-stack[^ ]*|image: ${LIGHTSPEED_CORE_IMAGE}|g" "${VALUES_YAML}"
 fi
