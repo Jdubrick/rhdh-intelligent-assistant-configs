@@ -48,6 +48,8 @@ inference:
     # - type: openai
     #   id: openai
     #   api_key_env: OPENAI_API_KEY
+    #   extra:
+    #     base_url: ${env.OPENAI_API_BASE_URL:=}
     # - type: vertexai
     #   id: vertexai
     #   extra:
