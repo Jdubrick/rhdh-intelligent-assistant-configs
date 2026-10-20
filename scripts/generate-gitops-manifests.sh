@@ -156,7 +156,7 @@ add_inference_allowed_models() {
       print
     }
 
-    current_provider == "openai" && /^        base_url: \$\{env.OPENAI_API_BASE_URL:=api\.openai\.com\}$/ {
+    current_provider == "openai" && /^        base_url: \$\{env.OPENAI_API_BASE_URL:=https:\/\/api\.openai\.com\/v1\}$/ {
       print "        allowed_models:"
       print "          - gpt-4o-mini"
       print "          - gpt-5.1"
